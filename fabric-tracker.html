@@ -536,7 +536,7 @@
 
     <div class="form-group">
       <label>รหัสผ้า / QR Code</label>
-      <input type="text" id="fabricCode" placeholder="FABRIC-0001" />
+      <input type="text" id="fabricCode" placeholder="FABRIC-0001" oninput="checkCode(this.value)" />
     </div>
 
     <div class="form-group">
@@ -553,7 +553,11 @@
       </select>
     </div>
 
-    <button class="btn-primary" onclick="saveRecord()">✓ บันทึกข้อมูล</button>
+    <div id="actionButtons">
+      <button class="btn-primary" id="saveBtn" onclick="saveRecord()" style="display:none;">✓ บันทึกข้อมูล</button>
+      <button class="btn-primary" id="deleteBtn" onclick="deleteByCode()" style="background:#ef4444;display:none;">🗑 ลบข้อมูล</button>
+      <div id="noActionMsg" style="font-family:var(--font-mono);font-size:12px;color:var(--text-dim);text-align:center;padding:8px;">สแกนหรือกรอกรหัสผ้าก่อน</div>
+    </div>
   </div>
 
   <!-- RIGHT: TABLE -->
@@ -767,6 +771,46 @@ async function addRowToExcel(code, parade, time) {
   }
 }
 
+function checkCode(val) {
+  const code = val.trim();
+  const saveBtn = document.getElementById('saveBtn');
+  const deleteBtn = document.getElementById('deleteBtn');
+  const noMsg = document.getElementById('noActionMsg');
+  if (!code) {
+    saveBtn.style.display = 'none';
+    deleteBtn.style.display = 'none';
+    noMsg.style.display = '';
+    return;
+  }
+  noMsg.style.display = 'none';
+  const exists = records.find(r => r.code === code);
+  if (exists) {
+    saveBtn.style.display = 'none';
+    deleteBtn.style.display = '';
+    deleteBtn.textContent = '🗑 ลบ: ' + code + ' (' + exists.parade + ')';
+  } else {
+    deleteBtn.style.display = 'none';
+    saveBtn.style.display = '';
+  }
+}
+
+async function deleteByCode() {
+  const code = document.getElementById('fabricCode').value.trim();
+  if (!code) return;
+  const idx = records.findIndex(r => r.code === code);
+  if (idx < 0) { showToast('ไม่พบรหัสนี้ในระบบ', 'error'); return; }
+  records.splice(idx, 1);
+  save();
+  showToast('ลบ ' + code + ' แล้ว');
+  document.getElementById('fabricCode').value = '';
+  document.getElementById('paradeSelect').value = '';
+  document.getElementById('detectBadge').classList.add('hidden');
+  checkCode('');
+  stopScanner();
+  document.getElementById('scanIdle').style.display = '';
+  document.getElementById('scannerBox').style.display = 'none';
+}
+
 async function saveRecord() {
   const code = document.getElementById('fabricCode').value.trim();
   const parade = document.getElementById('paradeSelect').value;
@@ -798,7 +842,10 @@ async function saveRecord() {
   document.getElementById('fabricCode').value = '';
   document.getElementById('paradeSelect').value = '';
   document.getElementById('detectBadge').classList.add('hidden');
+  checkCode('');
   stopScanner();
+  document.getElementById('scanIdle').style.display = '';
+  document.getElementById('scannerBox').style.display = 'none';
 }
 
 function setPA(state) {
@@ -889,6 +936,7 @@ function onQRDetected(data) {
   const badge = document.getElementById('detectBadge');
   badge.classList.remove('hidden');
   document.getElementById('detectText').textContent = data;
+  checkCode(data);
   showToast('สแกนสำเร็จ: ' + data);
 }
 
