@@ -898,11 +898,14 @@ let html5QrCode = null;
 
 async function startScanner() {
   if (scanning) return;
+  // clear container ก่อนเสมอ
+  const container = document.getElementById('video-container');
+  container.innerHTML = '';
   document.getElementById('scanIdle').style.display = 'none';
   document.getElementById('scannerBox').style.display = '';
   scanning = true;
-  html5QrCode = new Html5Qrcode("video-container");
   try {
+    html5QrCode = new Html5Qrcode('video-container');
     const formats = [
       Html5QrcodeSupportedFormats.QR_CODE,
       Html5QrcodeSupportedFormats.CODE_128,
@@ -912,29 +915,30 @@ async function startScanner() {
       Html5QrcodeSupportedFormats.UPC_A,
       Html5QrcodeSupportedFormats.UPC_E,
       Html5QrcodeSupportedFormats.ITF,
-      Html5QrcodeSupportedFormats.DATA_MATRIX,
     ];
     await html5QrCode.start(
       { facingMode: 'environment' },
-      { fps: 15, qrbox: { width: 250, height: 150 }, formatsToSupport: formats },
+      { fps: 10, qrbox: { width: 240, height: 140 }, formatsToSupport: formats },
       (decodedText) => { onQRDetected(decodedText); },
       () => {}
     );
   } catch(e) {
-    const msg = e.toString().includes('NotAllowed') ? 'กรุณาอนุญาตใช้กล้อง' :
-                e.toString().includes('NotFound') ? 'ไม่พบกล้อง' : 'กล้องมีปัญหา: ' + e;
-    showToast(msg, 'error');
     scanning = false;
+    html5QrCode = null;
+    container.innerHTML = '';
     document.getElementById('scanIdle').style.display = '';
     document.getElementById('scannerBox').style.display = 'none';
+    const msg = String(e).includes('NotAllowed') ? 'กรุณาอนุญาตใช้กล้องในเบราว์เซอร์' :
+                String(e).includes('NotFound') ? 'ไม่พบกล้องในอุปกรณ์' :
+                'กล้องมีปัญหา: ' + e;
+    showToast(msg, 'error');
   }
 }
 
 function onQRDetected(data) {
   stopScanner();
   document.getElementById('fabricCode').value = data;
-  const badge = document.getElementById('detectBadge');
-  badge.classList.remove('hidden');
+  document.getElementById('detectBadge').classList.remove('hidden');
   document.getElementById('detectText').textContent = data;
   checkCode(data);
   showToast('สแกนสำเร็จ: ' + data);
@@ -942,7 +946,16 @@ function onQRDetected(data) {
 
 function stopScanner() {
   scanning = false;
-  if (html5QrCode) { html5QrCode.stop().catch(()=>{}); html5QrCode = null; }
+  if (html5QrCode) {
+    html5QrCode.stop().then(() => {
+      html5QrCode.clear();
+      html5QrCode = null;
+      document.getElementById('video-container').innerHTML = '';
+    }).catch(() => {
+      html5QrCode = null;
+      document.getElementById('video-container').innerHTML = '';
+    });
+  }
 }
 
 function resetScanner() {
