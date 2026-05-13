@@ -684,26 +684,29 @@ function getMsal() {
 }
 
 async function msLogin() {
+  try {
   const app = getMsal();
+  document.getElementById('loginBtn').textContent = '⏳ กำลัง Login...';
   try {
     await app.initialize();
-    // เช็ค popup ก่อน
-    const test = window.open('', '_blank', 'width=1,height=1');
-    if (!test || test.closed) {
-      showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์ก่อน แล้วลองใหม่', 'error');
-      return;
-    }
-    test.close();
     const res = await app.loginPopup({ scopes: ['Files.ReadWrite', 'User.Read'] });
     msToken = res.accessToken;
     setPA('ok');
     document.getElementById('loginBtn').textContent = '✅ ' + res.account.username;
     showToast('Login สำเร็จ: ' + res.account.username);
   } catch(e) {
-    if (e.message && e.message.includes('popup')) {
-      showToast('Popup ถูกบล็อก — กด Allow Popup ที่ URL bar แล้วลองใหม่', 'error');
+    document.getElementById('loginBtn').textContent = '🔑 Login Microsoft';
+    const msg = e.errorCode || e.message || String(e);
+    if (msg.includes('popup_window_error') || msg.includes('popupWindow')) {
+      alert('Popup ถูกบล็อก!
+
+ให้กด Allow Popup ที่ URL bar ด้านบนขวา
+แล้วกด Login อีกครั้ง');
+    } else if (msg.includes('user_cancelled')) {
+      showToast('ยกเลิก Login', 'error');
     } else {
-      showToast('Login ไม่ได้: ' + e.message, 'error');
+      alert('Login Error:
+' + msg);
     }
     setPA('err');
   }
@@ -805,15 +808,17 @@ function setPA(state) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const app = getMsal();
   try {
+    const app = getMsal();
     await app.initialize();
     const accounts = app.getAllAccounts();
     if (accounts.length > 0) {
       document.getElementById('loginBtn').textContent = '✅ ' + accounts[0].username;
       setPA('ok');
     }
-  } catch(e) {}
+  } catch(e) {
+    console.warn('MSAL init:', e);
+  }
 });
 
 function deleteRecord(id) {
@@ -851,9 +856,20 @@ async function startScanner() {
   scanning = true;
   html5QrCode = new Html5Qrcode("video-container");
   try {
+    const formats = [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.ITF,
+      Html5QrcodeSupportedFormats.DATA_MATRIX,
+    ];
     await html5QrCode.start(
       { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 220, height: 220 }, supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA] },
+      { fps: 15, qrbox: { width: 250, height: 150 }, formatsToSupport: formats },
       (decodedText) => { onQRDetected(decodedText); },
       () => {}
     );
