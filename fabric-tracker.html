@@ -843,22 +843,28 @@ let codeReader = null;
 async function startScanner() {
   if (scanning) return;
   try {
-    codeReader = new ZXing.BrowserMultiFormatReader();
+    // ขอสิทธิ์กล้องก่อน
+    stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } 
+    });
+    const videoEl = document.getElementById('video');
+    videoEl.srcObject = stream;
+    await videoEl.play();
     document.getElementById('scanIdle').style.display = 'none';
     document.getElementById('scannerBox').style.display = '';
     scanning = true;
-    const videoEl = document.getElementById('video');
-    const devices = await ZXing.BrowserMultiFormatReader.listVideoInputDevices();
-    const backCamera = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('rear') || d.label.toLowerCase().includes('environment')) || devices[devices.length - 1];
-    const deviceId = backCamera ? backCamera.deviceId : undefined;
-    await codeReader.decodeFromVideoDevice(deviceId, videoEl, (result, err) => {
-      if (result) {
-        onQRDetected(result.getText());
-      }
+    // ใช้ ZXing decode จาก video element
+    codeReader = new ZXing.BrowserMultiFormatReader();
+    codeReader.decodeFromVideoElement(videoEl, (result, err) => {
+      if (result) onQRDetected(result.getText());
     });
   } catch (e) {
-    showToast('ไม่สามารถเข้าถึงกล้องได้: ' + e.message, 'error');
+    const msg = e.name === 'NotAllowedError' ? 'กรุณาอนุญาตใช้กล้องในเบราว์เซอร์' : 
+                e.name === 'NotFoundError' ? 'ไม่พบกล้อง' : e.message;
+    showToast(msg, 'error');
     scanning = false;
+    document.getElementById('scanIdle').style.display = '';
+    document.getElementById('scannerBox').style.display = 'none';
   }
 }
 
