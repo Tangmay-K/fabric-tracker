@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบติดตามผ้า — QR Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d2e;
+    --surface2: #242840;
+    --border: #2e3250;
+    --amber: #f59e0b;
+    --amber-dim: #92600a;
+    --amber-bg: #1c1608;
+    --text: #e8eaf6;
+    --text-muted: #8b8fa8;
+    --text-dim: #555870;
+    --green: #10b981;
+    --green-bg: #061a12;
+    --red: #ef4444;
+    --red-bg: #1a0606;
+    --blue: #60a5fa;
+    --blue-bg: #061626;
+    --radius: 10px;
+    --font-body: 'Sarabun', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .logo-icon {
+    width: 30px; height: 30px;
+    background: var(--amber);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .logo-text {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text);
+    letter-spacing: 0.5px;
+  }
+  .logo-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    margin-top: 1px;
+  }
+  .header-stats {
+    display: flex; gap: 20px;
+  }
+  .hstat {
+    text-align: right;
+  }
+  .hstat-num {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--amber);
+    line-height: 1;
+  }
+  .hstat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  /* ── LAYOUT ── */
+  .app-body {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    gap: 0;
+  }
+
+  /* ── LEFT PANEL ── */
+  .left-panel {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+    height: calc(100vh - 56px);
+    position: sticky;
+    top: 56px;
+  }
+
+  .panel-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* ── CAMERA / SCANNER ── */
+  .scanner-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    position: relative;
+  }
+  #video {
+    width: 100%;
+    display: block;
+    border-radius: var(--radius);
+  }
+  #canvas { display: none; }
+  .scan-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .scan-frame {
+    width: 140px; height: 140px;
+    position: relative;
+  }
+  .scan-frame::before, .scan-frame::after,
+  .scan-frame span::before, .scan-frame span::after {
+    content: '';
+    position: absolute;
+    width: 24px; height: 24px;
+    border-color: var(--amber);
+    border-style: solid;
+  }
+  .scan-frame::before { top: 0; left: 0; border-width: 2px 0 0 2px; }
+  .scan-frame::after  { top: 0; right: 0; border-width: 2px 2px 0 0; }
+  .scan-frame span::before { bottom: 0; left: 0; border-width: 0 0 2px 2px; }
+  .scan-frame span::after  { bottom: 0; right: 0; border-width: 0 2px 2px 0; }
+  .scan-line {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--amber), transparent);
+    animation: scanLine 2s ease-in-out infinite;
+    top: 0;
+  }
+  @keyframes scanLine {
+    0%   { top: 0; opacity: 1; }
+    100% { top: 100%; opacity: 0.3; }
+  }
+  .scan-status {
+    position: absolute;
+    bottom: 10px; left: 0; right: 0;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--amber);
+  }
+  .scan-idle {
+    background: var(--surface2);
+    height: 200px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    border-radius: var(--radius);
+    border: 1px dashed var(--border);
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .scan-idle:hover { border-color: var(--amber); }
+  .scan-idle svg { opacity: 0.4; }
+  .scan-idle p {
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  /* ── DETECTED BADGE ── */
+  .detect-badge {
+    background: var(--green-bg);
+    border: 1px solid var(--green);
+    border-radius: 6px;
+    padding: 8px 12px;
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--green);
+    animation: fadeIn 0.3s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .detect-badge.hidden { display: none; }
+
+  /* ── FORM INPUTS ── */
+  label {
+    font-size: 12px;
+    color: var(--text-muted);
+    display: block;
+    margin-bottom: 6px;
+    font-family: var(--font-mono);
+  }
+  input[type="text"], select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    padding: 9px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+    -webkit-appearance: none;
+  }
+  input[type="text"]:focus, select:focus {
+    border-color: var(--amber);
+  }
+  select {
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238b8fa8' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+  }
+  select option { background: var(--surface); }
+
+  .form-group { display: flex; flex-direction: column; }
+
+  .btn-primary {
+    width: 100%;
+    background: var(--amber);
+    color: #0f0a00;
+    border: none;
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 13px;
+    padding: 11px;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    letter-spacing: 0.3px;
+  }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-primary:active { transform: scale(0.98); }
+  .btn-secondary {
+    width: 100%;
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 9px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-secondary:hover { border-color: var(--amber-dim); color: var(--amber); }
+
+  /* ── RIGHT PANEL ── */
+  .right-panel {
+    padding: 20px 24px;
+    overflow-y: auto;
+    height: calc(100vh - 56px);
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .search-wrap {
+    flex: 1;
+    position: relative;
+  }
+  .search-wrap svg {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: 0.4;
+  }
+  .search-input {
+    padding-left: 34px !important;
+  }
+  .filter-select {
+    width: 160px;
+  }
+
+  .btn-export {
+    background: var(--surface2);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 8px 14px;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .btn-export:hover { color: var(--amber); border-color: var(--amber-dim); }
+
+  /* ── TABLE ── */
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead th {
+    background: var(--surface2);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 10px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.15s;
+  }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface2); }
+  td {
+    padding: 11px 14px;
+    vertical-align: middle;
+  }
+  .td-code {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--blue);
+  }
+  .td-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+  }
+  .td-time {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .parade-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .p1  { background: #1a0f2e; color: #c084fc; border: 1px solid #4c1d95; }
+  .p2  { background: #0c1a26; color: #60a5fa; border: 1px solid #1e3a5f; }
+  .p3  { background: #0a1a14; color: #34d399; border: 1px solid #064e3b; }
+  .p4  { background: #1a140a; color: #fbbf24; border: 1px solid #78350f; }
+  .p5  { background: #1a0a0a; color: #f87171; border: 1px solid #7f1d1d; }
+  .p6  { background: #0f1a1a; color: #2dd4bf; border: 1px solid #134e4a; }
+  .p7  { background: #1a1206; color: #fb923c; border: 1px solid #7c2d12; }
+  .pX  { background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border); }
+
+  .del-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: color 0.2s, background 0.2s;
+  }
+  .del-btn:hover { color: var(--red); background: var(--red-bg); }
+
+  .empty-state {
+    padding: 60px 20px;
+    text-align: center;
+    color: var(--text-dim);
+  }
+  .empty-state svg { opacity: 0.2; margin-bottom: 12px; }
+  .empty-state p { font-size: 14px; color: var(--text-muted); }
+  .empty-state p.sub { font-size: 12px; font-family: var(--font-mono); color: var(--text-dim); margin-top: 4px; }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    background: var(--green);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 10px 16px;
+    border-radius: 6px;
+    animation: slideUp 0.3s ease;
+    z-index: 999;
+  }
+  .toast.error { background: var(--red); }
+  @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+  /* ── SECTION LABELS ── */
+  .divider {
+    display: flex; align-items: center; gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── STATS ROW ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .stat-num {
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--amber);
+    line-height: 1;
+  }
+  .stat-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 3px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🧵</div>
+    <div>
+      <div class="logo-text">FABRIC TRACKER</div>
+      <div class="logo-sub">ระบบติดตามผ้า v1.0</div>
+    </div>
+  </div>
+  <div class="header-stats">
+    <div class="hstat">
+      <div class="hstat-num" id="totalCount">0</div>
+      <div class="hstat-label">รายการทั้งหมด</div>
+    </div>
+    <div class="hstat">
+      <div class="hstat-num" id="paradeCount">0</div>
+      <div class="hstat-label">จำนวนพาเรด</div>
+    </div>
+  </div>
+</header>
+
+<div class="app-body">
+
+  <!-- LEFT: SCANNER + FORM -->
+  <div class="left-panel">
+    <div class="panel-title">📷 สแกน QR Code</div>
+
+    <div id="paSetup" style="background:#0a0f1a;border:1px solid #1a3a6c;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;">
+      <div style="font-family:var(--font-mono);font-size:11px;color:#60a5fa;font-weight:600;">☁️ OneDrive / Excel</div>
+      <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-dim);" id="paStatus">⬤ ยังไม่ได้ Login</div>
+      <button onclick="msLogin()" id="loginBtn" style="background:transparent;border:1px solid #1a3a6c;color:#60a5fa;font-family:var(--font-mono);font-size:11px;padding:6px;border-radius:6px;cursor:pointer;width:100%;">🔑 Login Microsoft</button>
+    </div>
+
+    <div id="scannerContainer">
+      <div class="scan-idle" id="scanIdle" onclick="startScanner()">
+        <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="#8b8fa8" stroke-width="1.5">
+          <path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2"/>
+          <rect x="7" y="7" width="4" height="4" rx="0.5"/>
+          <rect x="13" y="7" width="4" height="4" rx="0.5"/>
+          <rect x="7" y="13" width="4" height="4" rx="0.5"/>
+          <path d="M13 13h2v2M15 15h2v2"/>
+        </svg>
+        <p>แตะเพื่อเปิดกล้องสแกน</p>
+      </div>
+      <div class="scanner-box" id="scannerBox" style="display:none;">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="canvas"></canvas>
+        <div class="scan-overlay">
+          <div class="scan-frame">
+            <span></span>
+            <div class="scan-line"></div>
+          </div>
+        </div>
+        <div class="scan-status" id="scanStatus">กำลังสแกน...</div>
+      </div>
+    </div>
+
+    <div class="detect-badge hidden" id="detectBadge">
+      <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      <span id="detectText">—</span>
+    </div>
+
+    <div class="divider">ข้อมูลผ้า</div>
+
+    <div class="form-group">
+      <label>รหัสผ้า / QR Code</label>
+      <input type="text" id="fabricCode" placeholder="FABRIC-0001" />
+    </div>
+
+    <div class="form-group">
+      <label>พาเรดที่</label>
+      <select id="paradeSelect">
+        <option value="">— เลือกพาเรด —</option>
+        <option value="พาเรด 1">พาเรด 1</option>
+        <option value="พาเรด 2">พาเรด 2</option>
+        <option value="พาเรด 3">พาเรด 3</option>
+        <option value="พาเรด 4">พาเรด 4</option>
+        <option value="พาเรด 5">พาเรด 5</option>
+        <option value="พาเรด 6">พาเรด 6</option>
+        <option value="พาเรด 7">พาเรด 7</option>
+      </select>
+    </div>
+
+    <button class="btn-primary" onclick="saveRecord()">✓ บันทึกข้อมูล</button>
+  </div>
+
+  <!-- RIGHT: TABLE -->
+  <div class="right-panel">
+    <div class="stats-row" id="statsRow"></div>
+
+    <div class="toolbar">
+      <div class="search-wrap">
+        <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="#8b8fa8" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input type="text" class="search-input" id="searchInput" placeholder="ค้นหารหัสผ้า..." oninput="renderTable()" />
+      </div>
+      <select class="filter-select" id="filterParade" onchange="renderTable()">
+        <option value="">ทุกพาเรด</option>
+      </select>
+      <button class="btn-export" onclick="exportExcel()">
+        <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        Export Excel
+      </button>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>รหัสผ้า</th>
+            <th>พาเรด</th>
+            <th>เวลา</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+      <div class="empty-state" id="emptyState" style="display:none;">
+        <svg width="48" height="48" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path d="M9 17H7A5 5 0 017 7h2M15 7h2a5 5 0 010 10h-2M8 12h8"/></svg>
+        <p>ยังไม่มีข้อมูล</p>
+        <p class="sub">สแกน QR หรือกรอกข้อมูลทางซ้าย</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.js"></script>
+<script>
+const PARADES = ['พาเรด 1','พาเรด 2','พาเรด 3','พาเรด 4','พาเรด 5','พาเรด 6','พาเรด 7'];
+const PARADE_CLASSES = ['p1','p2','p3','p4','p5','p6','p7','pX'];
+
+let records = JSON.parse(localStorage.getItem('fabricRecords') || '[]');
+let scanning = false;
+let stream = null;
+let animFrame = null;
+
+function save() {
+  localStorage.setItem('fabricRecords', JSON.stringify(records));
+  updateHeaderStats();
+  renderStatsRow();
+  renderFilterOptions();
+  renderTable();
+}
+
+function getParadeClass(p) {
+  const idx = PARADES.indexOf(p);
+  return idx >= 0 ? PARADE_CLASSES[idx] : 'pX';
+}
+
+function updateHeaderStats() {
+  document.getElementById('totalCount').textContent = records.length;
+  const parades = new Set(records.map(r => r.parade).filter(Boolean));
+  document.getElementById('paradeCount').textContent = parades.size;
+}
+
+function renderStatsRow() {
+  const counts = {};
+  records.forEach(r => { counts[r.parade] = (counts[r.parade] || 0) + 1; });
+  const html = Object.entries(counts).sort((a,b) => a[0].localeCompare(b[0], 'th'))
+    .map(([p, c]) => `<div class="stat-card"><div class="stat-num">${c}</div><div class="stat-label">${p}</div></div>`).join('');
+  document.getElementById('statsRow').innerHTML = html || '';
+}
+
+function renderFilterOptions() {
+  const parades = [...new Set(records.map(r => r.parade).filter(Boolean))].sort((a,b) => a.localeCompare(b,'th'));
+  const sel = document.getElementById('filterParade');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">ทุกพาเรด</option>' + parades.map(p => `<option value="${p}" ${p===cur?'selected':''}>${p}</option>`).join('');
+}
+
+function renderTable() {
+  const q = document.getElementById('searchInput').value.toLowerCase().trim();
+  const fp = document.getElementById('filterParade').value;
+  let list = records.filter(r => {
+    const match = !q || r.code.toLowerCase().includes(q) || r.name.toLowerCase().includes(q);
+    const pMatch = !fp || r.parade === fp;
+    return match && pMatch;
+  });
+  const tbody = document.getElementById('tableBody');
+  if (!list.length) {
+    tbody.innerHTML = '';
+    document.getElementById('emptyState').style.display = '';
+    return;
+  }
+  document.getElementById('emptyState').style.display = 'none';
+  tbody.innerHTML = list.slice().reverse().map((r, i) => `
+    <tr>
+      <td class="td-time">${list.length - i}</td>
+      <td class="td-code">${r.code}</td>
+      <td><span class="parade-badge ${getParadeClass(r.parade)}">${r.parade || '—'}</span></td>
+      <td class="td-time">${r.time}</td>
+      <td><button class="del-btn" onclick="deleteRecord('${r.id}')" title="ลบ">✕</button></td>
+    </tr>`).join('');
+}
+
+let msalInstance = null;
+let msToken = null;
+
+const AZURE_CLIENT_ID = '9cf54d45-6870-4fc7-9942-d943a4cae252';
+const EXCEL_FILE_NAME = 'FabricTracker.xlsx';
+
+function getMsal() {
+  if (!msalInstance) {
+    msalInstance = new msal.PublicClientApplication({
+      auth: { clientId: AZURE_CLIENT_ID, authority: 'https://login.microsoftonline.com/common', redirectUri: window.location.href.split('?')[0] },
+      cache: { cacheLocation: 'localStorage' }
+    });
+  }
+  return msalInstance;
+}
+
+async function msLogin() {
+  const app = getMsal();
+  try {
+    await app.initialize();
+    const res = await app.loginPopup({ scopes: ['Files.ReadWrite', 'User.Read'] });
+    msToken = res.accessToken;
+    setPA('ok');
+    document.getElementById('loginBtn').textContent = '✅ ' + res.account.username;
+    showToast('Login สำเร็จ: ' + res.account.username);
+  } catch(e) {
+    showToast('Login ไม่ได้: ' + e.message, 'error');
+    setPA('err');
+  }
+}
+
+async function getToken() {
+  const app = getMsal();
+  if (!app) return null;
+  await app.initialize();
+  const accounts = app.getAllAccounts();
+  if (!accounts.length) return null;
+  try {
+    const res = await app.acquireTokenSilent({ scopes: ['Files.ReadWrite'], account: accounts[0] });
+    return res.accessToken;
+  } catch { return null; }
+}
+
+async function addRowToExcel(code, parade, time) {
+  const token = await getToken();
+  if (!token) { showToast('กรุณา Login Microsoft ก่อน', 'error'); return false; }
+  const fileName = EXCEL_FILE_NAME;
+  try {
+    // หาไฟล์ใน OneDrive
+    const searchRes = await fetch(`https://graph.microsoft.com/v1.0/me/drive/root/search(q='${encodeURIComponent(fileName)}')`, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    const searchData = await searchRes.json();
+    const file = searchData.value && searchData.value[0];
+    if (!file) { showToast('ไม่พบไฟล์ ' + fileName + ' ใน OneDrive', 'error'); return false; }
+    const fileId = file.id;
+    // หา Sheet แรก
+    const sheetRes = await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/worksheets`, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    const sheetData = await sheetRes.json();
+    const sheet = sheetData.value && sheetData.value[0];
+    if (!sheet) { showToast('ไม่พบ Sheet ในไฟล์', 'error'); return false; }
+    const sheetName = encodeURIComponent(sheet.name);
+    // หาแถวสุดท้าย
+    const rangeRes = await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/worksheets/${sheetName}/usedRange`, {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    const rangeData = await rangeRes.json();
+    const nextRow = rangeData.rowCount ? rangeData.rowCount + 1 : 2;
+    const no = nextRow - 1;
+    // เขียนแถวใหม่
+    const addr = `A${nextRow}:D${nextRow}`;
+    const writeRes = await fetch(`https://graph.microsoft.com/v1.0/me/drive/items/${fileId}/workbook/worksheets/${sheetName}/range(address='${addr}')`, {
+      method: 'PATCH',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [[no, code, time, parade]] })
+    });
+    return writeRes.ok;
+  } catch(e) {
+    console.error(e);
+    showToast('Error: ' + e.message, 'error');
+    return false;
+  }
+}
+
+async function saveRecord() {
+  const code = document.getElementById('fabricCode').value.trim();
+  const parade = document.getElementById('paradeSelect').value;
+  if (!code) { showToast('กรุณากรอกรหัสผ้า', 'error'); return; }
+  if (!parade) { showToast('กรุณาเลือกพาเรด', 'error'); return; }
+  const now = new Date();
+  const time = now.toLocaleString('th-TH', { hour12: false });
+  const existing = records.findIndex(r => r.code === code);
+  const isUpdate = existing >= 0;
+  if (isUpdate) {
+    records[existing] = { ...records[existing], parade, time };
+  } else {
+    records.push({ id: Date.now().toString(), code, parade, time });
+  }
+  save();
+
+  if (AZURE_CLIENT_ID) {
+    const btn = document.querySelector('.btn-primary');
+    btn.textContent = '⏳ กำลังส่ง...';
+    btn.disabled = true;
+    const ok = await addRowToExcel(code, parade, time);
+    if (ok) showToast('✓ บันทึก + ส่ง OneDrive Excel สำเร็จ');
+    btn.textContent = '✓ บันทึกข้อมูล';
+    btn.disabled = false;
+  } else {
+    showToast(isUpdate ? `อัปเดต ${code} → ${parade}` : `บันทึก ${code} → ${parade}`);
+  }
+
+  document.getElementById('fabricCode').value = '';
+  document.getElementById('paradeSelect').value = '';
+  document.getElementById('detectBadge').classList.add('hidden');
+  stopScanner();
+}
+
+function setPA(state) {
+  const el = document.getElementById('paStatus');
+  if (state === 'ok') { el.textContent = '⬤ เชื่อมต่อ OneDrive สำเร็จ'; el.style.color = 'var(--green)'; }
+  else if (state === 'err') { el.textContent = '⬤ เชื่อมต่อไม่ได้'; el.style.color = 'var(--red)'; }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  const app = getMsal();
+  try {
+    await app.initialize();
+    const accounts = app.getAllAccounts();
+    if (accounts.length > 0) {
+      document.getElementById('loginBtn').textContent = '✅ ' + accounts[0].username;
+      setPA('ok');
+    }
+  } catch(e) {}
+});
+
+function deleteRecord(id) {
+  records = records.filter(r => r.id !== id);
+  save();
+}
+
+function showToast(msg, type = '') {
+  const t = document.createElement('div');
+  t.className = 'toast' + (type === 'error' ? ' error' : '');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+function exportCSV() {
+  if (!records.length) { showToast('ไม่มีข้อมูล', 'error'); return; }
+  const rows = [['ลำดับ','รหัสผ้า','ชื่อผ้า','พาเรด','หมายเหตุ','เวลา']];
+  records.forEach((r, i) => rows.push([i+1, r.code, r.name, r.parade, r.note, r.time]));
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'fabric_records_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+// ── SCANNER ──
+async function startScanner() {
+  if (scanning) return;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const video = document.getElementById('video');
+    video.srcObject = stream;
+    await video.play();
+    document.getElementById('scanIdle').style.display = 'none';
+    document.getElementById('scannerBox').style.display = '';
+    scanning = true;
+    tickScan();
+  } catch (e) {
+    showToast('ไม่สามารถเข้าถึงกล้องได้', 'error');
+  }
+}
+
+function tickScan() {
+  if (!scanning) return;
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+    if (code && code.data) {
+      onQRDetected(code.data);
+      return;
+    }
+  }
+  animFrame = requestAnimationFrame(tickScan);
+}
+
+function onQRDetected(data) {
+  stopScanner();
+  document.getElementById('fabricCode').value = data;
+  const badge = document.getElementById('detectBadge');
+  badge.classList.remove('hidden');
+  document.getElementById('detectText').textContent = data;
+  document.getElementById('scanStatus').textContent = '✓ พบ QR Code';
+  document.getElementById('fabricName').focus();
+  showToast('สแกน QR สำเร็จ: ' + data);
+}
+
+function stopScanner() {
+  scanning = false;
+  if (animFrame) cancelAnimationFrame(animFrame);
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+}
+
+function resetScanner() {
+  stopScanner();
+  document.getElementById('scanIdle').style.display = '';
+  document.getElementById('scannerBox').style.display = 'none';
+  document.getElementById('fabricCode').value = '';
+  document.getElementById('paradeSelect').value = '';
+  document.getElementById('detectBadge').classList.add('hidden');
+}
+
+function exportExcel() {
+  if (!records.length) { showToast('ไม่มีข้อมูล', 'error'); return; }
+  const ws_data = [['ลำดับ','รหัสผ้า','ชื่อผ้า','พาเรด','หมายเหตุ','เวลาบันทึก']];
+  records.forEach((r, i) => ws_data.push([i+1, r.code, r.name||'', r.parade||'', r.note||'', r.time]));
+  const ws = XLSX.utils.aoa_to_sheet(ws_data);
+  ws['!cols'] = [{wch:6},{wch:18},{wch:20},{wch:12},{wch:24},{wch:20}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'ข้อมูลผ้า');
+  const date = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, 'fabric_records_' + date + '.xlsx');
+  showToast('Export Excel สำเร็จ');
+}
+
+// ── INIT ──
+updateHeaderStats();
+renderStatsRow();
+renderFilterOptions();
+renderTable();
+</script>
+</body>
+</html>
