@@ -605,7 +605,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.js"></script>
+<script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
 <script>
 const PARADES = ['พาเรด 1','พาเรด 2','พาเรด 3','พาเรด 4','พาเรด 5','พาเรด 6','พาเรด 7'];
 const PARADE_CLASSES = ['p1','p2','p3','p4','p5','p6','p7','pX'];
@@ -838,39 +838,28 @@ function exportCSV() {
 }
 
 // ── SCANNER ──
+let codeReader = null;
+
 async function startScanner() {
   if (scanning) return;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-    const video = document.getElementById('video');
-    video.srcObject = stream;
-    await video.play();
+    codeReader = new ZXing.BrowserMultiFormatReader();
     document.getElementById('scanIdle').style.display = 'none';
     document.getElementById('scannerBox').style.display = '';
     scanning = true;
-    tickScan();
+    const videoEl = document.getElementById('video');
+    const devices = await ZXing.BrowserMultiFormatReader.listVideoInputDevices();
+    const backCamera = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('rear') || d.label.toLowerCase().includes('environment')) || devices[devices.length - 1];
+    const deviceId = backCamera ? backCamera.deviceId : undefined;
+    await codeReader.decodeFromVideoDevice(deviceId, videoEl, (result, err) => {
+      if (result) {
+        onQRDetected(result.getText());
+      }
+    });
   } catch (e) {
-    showToast('ไม่สามารถเข้าถึงกล้องได้', 'error');
+    showToast('ไม่สามารถเข้าถึงกล้องได้: ' + e.message, 'error');
+    scanning = false;
   }
-}
-
-function tickScan() {
-  if (!scanning) return;
-  const video = document.getElementById('video');
-  const canvas = document.getElementById('canvas');
-  if (video.readyState === video.HAVE_ENOUGH_DATA) {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
-    if (code && code.data) {
-      onQRDetected(code.data);
-      return;
-    }
-  }
-  animFrame = requestAnimationFrame(tickScan);
 }
 
 function onQRDetected(data) {
@@ -879,14 +868,13 @@ function onQRDetected(data) {
   const badge = document.getElementById('detectBadge');
   badge.classList.remove('hidden');
   document.getElementById('detectText').textContent = data;
-  document.getElementById('scanStatus').textContent = '✓ พบ QR Code';
-  document.getElementById('fabricName').focus();
-  showToast('สแกน QR สำเร็จ: ' + data);
+  document.getElementById('scanStatus').textContent = '✓ พบโค้ด';
+  showToast('สแกนสำเร็จ: ' + data);
 }
 
 function stopScanner() {
   scanning = false;
-  if (animFrame) cancelAnimationFrame(animFrame);
+  if (codeReader) { codeReader.reset(); codeReader = null; }
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
 }
 
